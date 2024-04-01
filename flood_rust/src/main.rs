@@ -61,119 +61,128 @@ fn load_report_or_abort(path: &Path) -> Report {
 }
 
 /// Connects to the eth node and returns the session
-async fn connect(url: &Option<String>) -> Result<(Context, Option<NodeInfo>)> {
-    let url = if url.is_none() {
+async fn connect(urls: &Option<Vec<String>>) -> Result<(Vec<Context>, Vec<Option<NodeInfo>>)> {
+    let urls = if urls.is_none() {
         match std::env::var("HTTP_PROVIDER_URL")
             .map_err(FloodError::EnvVar) {
-                Ok(url) => url,
-                Err(_) => "http://127.0.0.1:8545".to_string()
+                Ok(url) => vec![url],
+                Err(_) => vec!["http://127.0.0.1:8545".to_string()]
             }
     } else {
-        url.clone().unwrap()
+        urls.clone().unwrap()
     };
     // First have it connect to env var then to localhost
-    eprintln!("info: Connecting to {:?}... ", url);
-    let client = ClientBuilder::default().reqwest_http(url.parse().unwrap());
-    let session = Context::new(client);
-    let cluster_info = session.node_info().await?;
-    eprintln!(
-        "info: Connected to chain {}",
-        cluster_info
-            .as_ref()
-            .map(|c| c.chain_id.to_string())
-            .unwrap_or("unknown".to_string()),
-    );
-    Ok((session, cluster_info))
+
+    let mut sessions = Vec::new();
+    let mut cluster_infos = Vec::new();
+    for url in urls {
+        eprintln!("info: Connecting to {:?}... ", url);
+        let client = ClientBuilder::default().reqwest_http(url.parse().unwrap());
+        let session = Context::new(client);
+        let cluster_info = session.node_info().await?;
+        eprintln!(
+            "info: Connected to chain {}",
+            cluster_info
+                .as_ref()
+                .map(|c| c.chain_id.to_string())
+                .unwrap_or("unknown".to_string()),
+        );
+        sessions.push(session);
+        cluster_infos.push(cluster_info);
+    }
+    Ok((sessions, cluster_infos))
 }
 
 async fn rpc(conf: RpcCommand) -> Result<()> {
     let mut conf = conf.set_timestamp_if_empty();
     let compare = conf.baseline.as_ref().map(|p| load_report_or_abort(p));
 
-    let (session, node_info) = connect(&conf.rpc_url).await?;
-    if let Some(node_info) = node_info {
-        conf.cluster_name = Some(node_info.chain_id.to_string());
-    }
-
-    let (call, params) = conf.parse_params().unwrap();
-    //NOTE: this leaks memory and is a consequence of the limitations in the alloy crate.
-    let req = session.session.make_request(call, params).box_params();
-    let runner = Workload::new(session.clone()?, req);
-    let interrupt = Arc::new(InterruptHandler::install());
-    if conf.warmup_duration.is_not_zero() {
-        eprintln!("info: Warming up...");
-        let warmup_options = ExecutionOptions {
-            duration: conf.warmup_duration,
-            rate: None,
-            threads: conf.threads,
-            concurrency: conf.concurrency,
-        };
-        par_execute(
-            "Warming up...",
-            &warmup_options,
-            Interval::Unbounded,
-            runner.clone()?,
-            interrupt.clone(),
-            !conf.quiet,
-        )
-        .await?;
-    }
-
-    if interrupt.is_interrupted() {
-        return Err(FloodError::Interrupted);
-    }
-    
-    eprintln!("info: Running benchmark...");
-
-    println!(
-        "{}",
-        RpcConfigCmp {
-            v1: &conf,
-            v2: compare.as_ref().map(|c| &c.conf),
+    let (sessions, node_info) = connect(&conf.rpc_url).await?;
+    for (session, node_info) in sessions.iter().zip(node_info.iter()) {
+        if let Some(node_info) = node_info {
+            conf.cluster_name = Some(node_info.chain_id.to_string());
         }
-    );
 
-    for rate in conf.rate.clone().unwrap() {
-        let exec_options = ExecutionOptions {
-            duration: conf.run_duration.clone(),
-            concurrency: conf.concurrency.clone(),
-            rate: Some(rate),
-            threads: conf.threads.clone(),
-        };
-
-        report::print_log_header();
-        let stats = par_execute(
-            "Running...",
-            &exec_options,
-            conf.sampling_interval.clone(),
-            runner.clone()?,
-            interrupt.clone(),
-            !conf.quiet.clone(),
-        )
-        .await?;
-
-    let stats_cmp = BenchmarkCmp {
-        v1: &stats,
-        v2: compare.as_ref().map(|c| &c.result),
-    };
-    println!();
-    println!("{}", &stats_cmp);
-
-    let path = conf
-        .output
-        .clone()
-        .unwrap_or_else(|| conf.default_output_file_name("json"));
-
-    let report = Report::new(conf.clone(), stats);
-    match report.save(&path) {
-        Ok(()) => {
-            eprintln!("info: Saved report to {}", path.display());
+        let (call, params) = conf.parse_params().unwrap();
+        //NOTE: this leaks memory and is a consequence of the limitations in the alloy crate.
+        let req = session.session.make_request(call, params).box_params();
+        let runner = Workload::new(session.clone()?, req);
+        let interrupt = Arc::new(InterruptHandler::install());
+        if conf.warmup_duration.is_not_zero() {
+            eprintln!("info: Warming up...");
+            let warmup_options = ExecutionOptions {
+                duration: conf.warmup_duration,
+                rate: None,
+                threads: conf.threads,
+                concurrency: conf.concurrency,
+            };
+            par_execute(
+                "Warming up...",
+                &warmup_options,
+                Interval::Unbounded,
+                runner.clone()?,
+                interrupt.clone(),
+                !conf.quiet,
+            )
+            .await?;
         }
-        Err(e) => {
-            eprintln!("error: Failed to save report to {}: {}", path.display(), e);
-            exit(1);
+
+        if interrupt.is_interrupted() {
+            return Err(FloodError::Interrupted);
         }
-    }
+        
+        eprintln!("info: Running benchmark...");
+
+        println!(
+            "{}",
+            RpcConfigCmp {
+                v1: &conf,
+                v2: compare.as_ref().map(|c| &c.conf),
+            }
+        );
+
+        for rate in conf.rate.clone().unwrap() {
+            let exec_options = ExecutionOptions {
+                duration: conf.run_duration.clone(),
+                concurrency: conf.concurrency.clone(),
+                rate: Some(rate),
+                threads: conf.threads.clone(),
+            };
+
+            report::print_log_header();
+            let stats = par_execute(
+                "Running...",
+                &exec_options,
+                conf.sampling_interval.clone(),
+                runner.clone()?,
+                interrupt.clone(),
+                !conf.quiet.clone(),
+            )
+            .await?;
+
+            let stats_cmp = BenchmarkCmp {
+                v1: &stats,
+                v2: compare.as_ref().map(|c| &c.result),
+            };
+            println!();
+            println!("{}", &stats_cmp);
+
+            let path = conf
+                .output
+                .clone()
+                .unwrap_or_else(|| conf.default_output_file_name("json"));
+
+            let report = Report::new(conf.clone(), stats);
+            match report.save(&path) {
+                Ok(()) => {
+                    eprintln!("info: Saved report to {}", path.display());
+                }
+                Err(e) => {
+                    eprintln!("error: Failed to save report to {}: {}", path.display(), e);
+                    exit(1);
+                }
+            }
+        }
     }
     Ok(())
 }

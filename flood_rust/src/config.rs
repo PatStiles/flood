@@ -152,8 +152,8 @@ pub struct RpcCommand {
     pub quiet: bool,
 
     // Cassandra connection settings.
-    #[clap(short('u'), long)]
-    pub rpc_url: Option<String>,
+    #[clap(short('u'), long, num_args(0..))]
+    pub rpc_url: Option<Vec<String>>,
 
     /// Seconds since 1970-01-01T00:00:00Z
     #[clap(hide = true, long)]
