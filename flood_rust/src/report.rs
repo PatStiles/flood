@@ -451,7 +451,7 @@ impl<'a> Display for RpcConfigCmp<'a> {
             self.line("Cluster", "", |conf| {
                 OptionDisplay(conf.cluster_name.clone())
             }),
-            self.line("Cass. version", "", |conf| {
+            self.line("Chain ID version", "", |conf| {
                 OptionDisplay(conf.chain_id.clone())
             }),
             self.line("Tags", "", |conf| conf.tags.iter().join(", ")),
@@ -463,15 +463,14 @@ impl<'a> Display for RpcConfigCmp<'a> {
 
         writeln!(f, "{}", fmt_horizontal_line()).unwrap();
 
-        //TODO: add params for comparison
-
         let lines: Vec<Box<dyn Display>> = vec![
             self.line("Threads", "", |conf| Quantity::from(conf.threads)),
             //TODO: add connection
             self.line("Concurrency", "req", |conf| {
                 Quantity::from(conf.concurrency)
             }),
-            self.line("Max rate(s)", "op/s", |conf| Quantity::from(conf.rate)),
+            self.line("Max Rate(s)", "op/s", |conf| 
+                conf.rate.as_ref().unwrap().iter().map(|r| { let q = Quantity::from(r); format!("{q}") }).collect::<Vec<String>>().join(", ")),
             self.line("Warmup", "s", |conf| {
                 Quantity::from(conf.warmup_duration.seconds())
             }),

@@ -69,7 +69,7 @@ impl FromStr for Interval {
 
 // Taken from cast cli: https://github.com/foundry-rs/foundry/blob/master/crates/cast/bin/cmd/rpc.rs
 /// CLI arguments for `cast rpc`.
-#[derive(Parser, Debug, Serialize, Deserialize)]
+#[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 pub struct RpcCommand {
     /// RPC method name
     method: String,
@@ -78,30 +78,26 @@ pub struct RpcCommand {
     ///
     /// Interpreted as JSON:
     ///
-    /// cast rpc eth_getBlockByNumber 0x123 false
+    /// flood rpc eth_getBlockByNumber 0x123 false
     /// => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
-    params: Vec<String>,
+    pub params: Vec<String>,
 
     /// Send raw JSON parameters
     ///
     /// The first param will be interpreted as a raw JSON array of params.
     /// If no params are given, stdin will be used. For example:
     ///
-    /// cast rpc eth_getBlockByNumber '["0x123", false]' --raw
+    /// flood rpc eth_getBlockByNumber '["0x123", false]' --raw
     ///     => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
-    #[clap(long, short = 'a')]
+    #[clap(long, short = 'j')]
     raw: bool,
 
-    //NOTE: can import these from foundry to package connection nicely
-    /*
-    #[command(flatten)]
-    rpc: RpcOpts,
-    */
     // RUN COMMANDS
     /// Number of cycles per second to execute.
     /// If not given, the benchmark cycles will be executed as fast as possible.
-    #[clap(short('r'), long, value_name = "COUNT")]
-    pub rate: Option<f64>,
+    // TODO: add reserved word for logarithmic ramp up
+    #[clap(short('r'), long, value_name = "COUNT", num_args(0..))]
+    pub rate: Option<Vec<f64>>,
 
     /// Number of cycles or duration of the warmup phase.
     #[clap(
@@ -219,7 +215,7 @@ impl RpcCommand {
         components.extend(self.cluster_name.iter().map(|x| x.replace(' ', "_")));
         components.extend(self.chain_id.iter().cloned());
         components.extend(self.tags.iter().cloned());
-        components.extend(self.rate.map(|r| format!("r{r}")));
+        //components.extend(self.rate.map(|r| format!("r{r}")));
         components.push(format!("p{}", self.concurrency));
         components.push(format!("t{}", self.threads));
         components.push(chrono::Local::now().format("%Y%m%d.%H%M%S").to_string());

@@ -88,7 +88,6 @@ async fn connect(url: &Option<String>) -> Result<(Context, Option<NodeInfo>)> {
 
 async fn rpc(conf: RpcCommand) -> Result<()> {
     let mut conf = conf.set_timestamp_if_empty();
-    //TODO: simplify this? maybe option maybe a different workload
     let compare = conf.baseline.as_ref().map(|p| load_report_or_abort(p));
 
     let (session, node_info) = connect(&conf.rpc_url).await?;
@@ -96,11 +95,8 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         conf.cluster_name = Some(node_info.chain_id.to_string());
     }
 
-    //TODO: Load from Clap
     let (call, params) = conf.parse_params().unwrap();
-    println!("{:?}", params);
     //NOTE: this leaks memory and is a consequence of the limitations in the alloy crate.
-    let call: &'static str = call.leak();
     let req = session.session.make_request(call, params).box_params();
     let runner = Workload::new(session.clone()?, req);
     let interrupt = Arc::new(InterruptHandler::install());
@@ -126,7 +122,7 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
     if interrupt.is_interrupted() {
         return Err(FloodError::Interrupted);
     }
-
+    
     eprintln!("info: Running benchmark...");
 
     println!(
@@ -137,24 +133,24 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         }
     );
 
-    //TODO: change to list of rates
-    let exec_options = ExecutionOptions {
-        duration: conf.run_duration,
-        concurrency: conf.concurrency,
-        rate: conf.rate,
-        threads: conf.threads,
-    };
+    for rate in conf.rate.clone().unwrap() {
+        let exec_options = ExecutionOptions {
+            duration: conf.run_duration.clone(),
+            concurrency: conf.concurrency.clone(),
+            rate: Some(rate),
+            threads: conf.threads.clone(),
+        };
 
-    report::print_log_header();
-    let stats = par_execute(
-        "Running...",
-        &exec_options,
-        conf.sampling_interval,
-        runner,
-        interrupt.clone(),
-        !conf.quiet,
-    )
-    .await?;
+        report::print_log_header();
+        let stats = par_execute(
+            "Running...",
+            &exec_options,
+            conf.sampling_interval.clone(),
+            runner.clone()?,
+            interrupt.clone(),
+            !conf.quiet.clone(),
+        )
+        .await?;
 
     let stats_cmp = BenchmarkCmp {
         v1: &stats,
@@ -168,7 +164,7 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         .clone()
         .unwrap_or_else(|| conf.default_output_file_name("json"));
 
-    let report = Report::new(conf, stats);
+    let report = Report::new(conf.clone(), stats);
     match report.save(&path) {
         Ok(()) => {
             eprintln!("info: Saved report to {}", path.display());
@@ -177,6 +173,7 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
             eprintln!("error: Failed to save report to {}: {}", path.display(), e);
             exit(1);
         }
+    }
     }
     Ok(())
 }
