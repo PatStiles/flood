@@ -64,15 +64,15 @@ impl Default for WorkloadState {
 pub struct Workload {
     context: Context,
     state: TryLock<WorkloadState>,
-    cli: Request<Box<RawValue>>,
+    requests: Vec<Request<Box<RawValue>>>,
 }
 
 impl Workload {
-    pub fn new(context: Context, cli: Request<Box<RawValue>>) -> Workload {
+    pub fn new(context: Context, requests: Vec<Request<Box<RawValue>>>) -> Workload {
         Workload {
             context,
             state: TryLock::new(WorkloadState::default()),
-            cli,
+            requests,
         }
     }
 
@@ -81,32 +81,49 @@ impl Workload {
             context: self.context.clone()?,
             // make a deep copy to avoid congestion on Arc ref counts used heavily by Rune
             state: TryLock::new(WorkloadState::default()),
-            cli: self.cli.clone(),
+            requests: self.requests.clone(),
         })
+    }
+
+    pub async fn call(&self) -> Result<(), FloodError> {
+        for call in self.requests.clone() {
+            let start_time = self.context.stats.try_lock().unwrap().start_request();
+            // Each workload object can be a single, multiple, or batch of requests.
+            // This can fuck with measurements as we basically want to define a workload of different params, bench the entire execution and the execution of individual request....
+            // Have two stats... one per workload call and one per call to run() as is done within latte
+            let rs: Result<Box<RawValue>, RpcError<TransportErrorKind>> =
+                RpcCall::new(call, self.context.session.transport().clone())
+                    .boxed()
+                    .await;
+            let end_time = Instant::now();
+            //TAKE SESSION STATS as we don't make a Rune function call
+            //NOTE: These are per call stats
+            self.context
+                .stats
+                .try_lock()
+                .unwrap()
+                .complete_request::<Box<serde_json::value::RawValue>, TransportErrorKind>(
+                    end_time - start_time,
+                    &rs,
+                );
+        }
+        Ok(())
     }
 
     /// Executes a single cycle of a workload.
     /// This should be idempotent –
     /// the generated action should be a function of the iteration number.
     /// Returns the cycle number and the end time of the query.
+    // TODO: separate workload from call.
     pub async fn run(&self, cycle: u64) -> Result<(u64, Instant), FloodError> {
-        let start_time = self.context.stats.try_lock().unwrap().start_request();
-        let rs: Result<Box<RawValue>, RpcError<TransportErrorKind>> =
-            RpcCall::new(self.cli.clone(), self.context.session.transport().clone())
-                .boxed()
-                .await;
+        let start_time = Instant::now();
+        let rs = self.call().await;
         let end_time = Instant::now();
-        //TAKE SESSION STATS as we don't make a Rune function call
-        self.context
-            .stats
-            .try_lock()
-            .unwrap()
-            .complete_request::<Box<serde_json::value::RawValue>, TransportErrorKind>(
-                end_time - start_time,
-                &rs,
-            );
         let mut state = self.state.try_lock().unwrap();
+        //NOTE: This is per workload stats
         state.fn_stats.operation_completed(end_time - start_time);
+        
+        //TODO: store and analyze results later???
         match rs {
             Ok(_) => Ok((cycle, end_time)),
             //TODO: all but eth call have "deserialization error: invalid type: boolean `false`, expected unit at line 1 column 5"

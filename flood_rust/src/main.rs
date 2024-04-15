@@ -103,10 +103,11 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
             conf.cluster_name = Some(node_info.chain_id.to_string());
         }
 
-        let (call, params) = conf.parse_params().unwrap();
-        //NOTE: this leaks memory and is a consequence of the limitations in the alloy crate.
-        let req = session.session.make_request(call, params).box_params();
-        let runner = Workload::new(session.clone()?, req);
+        // Build requests for particular session
+        let params = conf.parse_params().unwrap();
+        let requests = params.into_iter().map(|(call, params)| session.session.make_request(call, params).box_params()).collect::<Vec<_>>();
+
+        let runner = Workload::new(session.clone()?, requests);
         let interrupt = Arc::new(InterruptHandler::install());
         if conf.warmup_duration.is_not_zero() {
             eprintln!("info: Warming up...");

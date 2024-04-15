@@ -80,6 +80,8 @@ pub struct RpcCommand {
     ///
     /// flood rpc eth_getBlockByNumber 0x123 false
     /// => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
+    /// 
+    /// flood rpc eth_getBlockByNumber 0x123 false
     pub params: Vec<String>,
 
     /// Send raw JSON parameters
@@ -166,8 +168,39 @@ pub struct RpcCommand {
     pub chain_id: Option<String>,
 }
 
+/*
+TODO: 
+- north star = be able to collect a single production quality dataset
+- main remaining goal = be able to make multiple calls using different parameter values for the same method
+    - Parse range of parameters for call to create workload
+    - Have Flag to execute using batching -> sub parameter than specifies number of calls in batch, default is max
+        - Warning that specifies
+    - Parse file of parameters to create workload
+    - Parse multiple calls and params to create workload
+    - Parse multiple calls and params from a file to create a workload
+    TO FUCK THIS PIG:
+        - Parsing:
+            - Three formats with sub flag
+                - List
+                    - Delimiter: {[], }
+                - Range
+                    - Delimiter: 0..1, 0x12..
+                - Random/Any
+                    - Delimiter: *
+                - Random/Exclusive
+                    - Delimiter: ????
+        - Workload:
+            - Have Vec of Different created requests.
+        - Execution:
+            - iterate and execute within workload
+- quality of life things = add example usage to readme + allow easier quitting with control c
+    - Parse file of parameters to create workload
+- Build batched JSON-RPC tests
+    - Parse file of parameters to create workload
+*/
 impl RpcCommand {
-    pub fn parse_params(&self) -> Result<(String, Value), anyhow::Error> {
+    // Parses an individual JSON-RPC call as defined in the clap interface
+    pub fn parse_rpc_call(&self) -> Result<(String, Value), anyhow::Error> { 
         let RpcCommand {
             raw,
             method,
@@ -195,6 +228,12 @@ impl RpcCommand {
             )
         };
         Ok((method.to_string(), params))
+    }
+
+    pub fn parse_params(&self) -> Result<Vec<(String, Value)>, anyhow::Error> {
+
+        let requests = self.parse_rpc_call().unwrap();
+        Ok(vec![requests])
     }
 
     pub fn set_timestamp_if_empty(mut self) -> Self {
