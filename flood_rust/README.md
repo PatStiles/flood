@@ -1,9 +1,11 @@
-# flood_rust:
-`flood_rust` is a Rust rewrite of Flood based on [Latte]() a performance benchmarking tool for CassandraDB. Currently, `flood_rust` can benchmark RPC node performance of individual JSON-RPC requests and series of JSON-RPC requests across a variety of parameters inputed manually or from an input file. For each benchmark, `flood_rust` defines a `Workload` which may contain one or more JSON-RPC requests and repeatedly executes each workload at a user defined `--rate  [op/s]`. The execution time of a `Workloads` recorded as well as the timing and success of individual JSON-RPC requests are recorded.
+# Flood Rust:
+`Flood Rust` is a Rust rewrite of Flood based on [Latte](https://github.com/pkolaczk/latte) a performance benchmarking tool for CassandraDB. Currently, `flood_rust` can benchmark RPC node performance of individual JSON-RPC requests and series of JSON-RPC requests across a variety of parameters inputed manually or from an input file. For each benchmark, `flood_rust` defines a `Workload` which may contain one or more JSON-RPC requests and repeatedly executes each workload at a user defined `--rate  [op/s]`. The execution time of a `Workloads` recorded as well as the timing and success of individual JSON-RPC requests are recorded.
 
-# Examples:
+## Examples:
 
-## Single JSON-RPC
+[JSON-RPC Reference](https://ethereum.org/en/developers/docs/apis/json-rpc)
+
+#### Single JSON-RPC
 ```bash
 cargo b --bins
 
@@ -11,13 +13,13 @@ target/debug/flood rpc eth_getBlockByNumber "0x1b4 true" --rpc-url [<RPC_URL>..]
 target/debug/flood rpc eth_getStorageAt "0x295a70b2de5e3953354a6a8344e616ed314d7251 0x0 latest" --rpc-url [<RPC_URL>..] --rate 100
 ```
 
-## Multiple JSON-RPC requests with different parameters
+#### Multiple JSON-RPC requests with different parameters
 ```bash
 cargo b --bins
 target/debug/flood rpc eth_getBlockByNumber "0x1b4 true","0x242 true" --rpc-url [<RPC_URL>..] --rate 100
 ```
 
-## Multiple JSON-RPC requests from file
+#### Multiple JSON-RPC requests from file
 ```bash
 cargo b --bins
 target/debug/flood rpc eth_getBlockByNumber --input examples/eth_getBlockByNumber.txt --rpc-url [<RPC_URL>..] --rate 100
