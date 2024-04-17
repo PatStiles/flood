@@ -1,7 +1,9 @@
+use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::fs::File;
 
 use anyhow::anyhow;
 use chrono::Utc;
@@ -67,6 +69,14 @@ impl FromStr for Interval {
     }
 }
 
+fn parse_params(s: &str) -> Result<Vec<String>, String> {
+        println!("PARAMS params {:?}", s);
+        match s.contains(',') {
+            true => Ok(s.split(' ').map(|s| s.to_string()).collect()),
+            false => Ok(vec![s.to_string()])
+        }
+}
+
 // Taken from cast cli: https://github.com/foundry-rs/foundry/blob/master/crates/cast/bin/cmd/rpc.rs
 /// CLI arguments for `cast rpc`.
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
@@ -82,7 +92,9 @@ pub struct RpcCommand {
     /// => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
     /// 
     /// flood rpc eth_getBlockByNumber 0x123 false
-    pub params: Vec<String>,
+    //TODO: this accepts any number of params and parses shouldn't???
+    #[arg(value_parser(parse_params), value_delimiter = ',')]
+    pub params: Option<Vec<Vec<String>>>,
 
     /// Send raw JSON parameters
     ///
@@ -140,6 +152,11 @@ pub struct RpcCommand {
     #[clap(long("tag"), number_of_values = 1)]
     pub tags: Vec<String>,
 
+    /// Path to JSON input file with JSON-RPC calls
+    #[clap(short('i'), long)]
+    #[serde(skip)]
+    pub input: Option<PathBuf>,
+
     /// Path to an output file or directory where the JSON report should be written to.
     #[clap(short('o'), long)]
     #[serde(skip)]
@@ -153,7 +170,8 @@ pub struct RpcCommand {
     #[clap(short, long)]
     pub quiet: bool,
 
-    // Cassandra connection settings.
+    //TODO: add default value
+    /// Eth Node RPC-URL
     #[clap(short('u'), long, num_args(0..))]
     pub rpc_url: Option<Vec<String>>,
 
@@ -173,41 +191,10 @@ TODO:
 - north star = be able to collect a single production quality dataset
 - main remaining goal = be able to make multiple calls using different parameter values for the same method
     - Parse range of parameters for call to create workload
-    - Have Flag to execute using batching -> sub parameter than specifies number of calls in batch, default is max
-        - Warning that specifies
-    - Parse file of parameters to create workload
-    - Parse multiple calls and params to create workload
     - Parse multiple calls and params from a file to create a workload
-    TO FUCK THIS PIG:
-        - Parsing:
-            - Three formats with sub flag
-                - List
-                    - Delimiter: {[], }
-                - Range
-                    - Delimiter: 0..1, 0x12..
-                - Random/Any
-                    - Delimiter: *
-                - Random/Exclusive
-                    - Delimiter: ????
-        - Workload:
-            - Have Vec of Different created requests.
-        - Execution:
-            - iterate and execute within workload
-- quality of life things = add example usage to readme + allow easier quitting with control c
-    - Parse file of parameters to create workload
-- Build batched JSON-RPC tests
-    - Parse file of parameters to create workload
 */
 impl RpcCommand {
-    // Parses an individual JSON-RPC call as defined in the clap interface
-    pub fn parse_rpc_call(&self) -> Result<(String, Value), anyhow::Error> { 
-        let RpcCommand {
-            raw,
-            method,
-            params,
-            ..
-        } = self;
-
+    fn parse_rpc_params(params: &Vec<String>, raw: &bool) -> Result<Value, anyhow::Error> { 
         let params = if *raw {
             if params.is_empty() {
                 serde_json::Deserializer::from_reader(std::io::stdin())
@@ -216,24 +203,52 @@ impl RpcCommand {
                     .transpose()?
                     .ok_or_else(|| anyhow!("Empty JSON parameters"))?
             } else {
-                value_or_string(params.iter().join(" "))
+                Self::value_or_string(params.iter().join(" "))
             }
         } else {
             //TODO: remove this clone
             serde_json::Value::Array(
                 params
                     .iter()
-                    .map(|value: &String| value_or_string(value.clone()))
+                    .map(|value: &String| Self::value_or_string(value.clone()))
                     .collect(),
             )
         };
-        Ok((method.to_string(), params))
+        Ok(params)
     }
 
-    pub fn parse_params(&self) -> Result<Vec<(String, Value)>, anyhow::Error> {
+    fn value_or_string(value: String) -> Value {
+        serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value))
+    }
 
-        let requests = self.parse_rpc_call().unwrap();
-        Ok(vec![requests])
+    pub fn parse_params(&self) -> Result<(String, Vec<Value>), anyhow::Error> {
+        let RpcCommand {
+            raw,
+            method,
+            params,
+            input,
+            ..
+        } = self;
+        
+        let parsed_params;
+        if let Some(path) = input {
+            let file = File::open(path)?;
+            let reader = BufReader::new(file);
+
+            let lines = reader.lines().fold(Vec::new(), |mut lines, line| {
+                let line_content = line.unwrap();
+                let values: Vec<String> = line_content.split(',').map(|s| s.trim().to_string()).collect();
+                lines.push(values);
+                lines
+            });
+            parsed_params = lines.iter().map(|param| Self::parse_rpc_params(&param, raw).unwrap()).collect();
+        } else {
+            //TODO: remove
+            let params = params.as_ref().unwrap();
+            parsed_params = params.iter().map(|param| Self::parse_rpc_params(&param, raw).unwrap()).collect();
+        }
+
+        Ok((method.to_string(), parsed_params))
     }
 
     pub fn set_timestamp_if_empty(mut self) -> Self {
@@ -260,10 +275,6 @@ impl RpcCommand {
         components.push(chrono::Local::now().format("%Y%m%d.%H%M%S").to_string());
         PathBuf::from(format!("{}.{extension}", components.join(".")))
     }
-}
-
-fn value_or_string(value: String) -> Value {
-    serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value))
 }
 
 #[derive(Parser, Debug)]

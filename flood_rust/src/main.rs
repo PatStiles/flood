@@ -104,8 +104,8 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         }
 
         // Build requests for particular session
-        let params = conf.parse_params().unwrap();
-        let requests = params.into_iter().map(|(call, params)| session.session.make_request(call, params).box_params()).collect::<Vec<_>>();
+        let (call, params) = conf.parse_params().unwrap();
+        let requests = params.into_iter().map(|param| session.session.make_request(call.clone(), param).box_params()).collect::<Vec<_>>();
 
         let runner = Workload::new(session.clone()?, requests);
         let interrupt = Arc::new(InterruptHandler::install());
