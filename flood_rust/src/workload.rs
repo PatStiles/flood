@@ -122,7 +122,7 @@ impl Workload {
         let mut state = self.state.try_lock().unwrap();
         //NOTE: This is per workload stats
         state.fn_stats.operation_completed(end_time - start_time);
-        
+
         //TODO: store and analyze results later???
         match rs {
             Ok(_) => Ok((cycle, end_time)),

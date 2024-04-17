@@ -1,9 +1,9 @@
-use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::fs::File;
 
 use anyhow::anyhow;
 use chrono::Utc;
@@ -70,11 +70,11 @@ impl FromStr for Interval {
 }
 
 fn parse_params(s: &str) -> Result<Vec<String>, String> {
-        println!("PARAMS params {:?}", s);
-        match s.contains(',') {
-            true => Ok(s.split(' ').map(|s| s.to_string()).collect()),
-            false => Ok(vec![s.to_string()])
-        }
+    println!("PARAMS params {:?}", s);
+    match s.contains(',') {
+        true => Ok(s.split(' ').map(|s| s.to_string()).collect()),
+        false => Ok(vec![s.to_string()]),
+    }
 }
 
 // Taken from cast cli: https://github.com/foundry-rs/foundry/blob/master/crates/cast/bin/cmd/rpc.rs
@@ -90,7 +90,7 @@ pub struct RpcCommand {
     ///
     /// flood rpc eth_getBlockByNumber 0x123 false
     /// => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
-    /// 
+    ///
     /// flood rpc eth_getBlockByNumber 0x123 false
     //TODO: this accepts any number of params and parses shouldn't???
     #[arg(value_parser(parse_params), value_delimiter = ',')]
@@ -187,14 +187,14 @@ pub struct RpcCommand {
 }
 
 /*
-TODO: 
+TODO:
 - north star = be able to collect a single production quality dataset
 - main remaining goal = be able to make multiple calls using different parameter values for the same method
     - Parse range of parameters for call to create workload
     - Parse multiple calls and params from a file to create a workload
 */
 impl RpcCommand {
-    fn parse_rpc_params(params: &Vec<String>, raw: &bool) -> Result<Value, anyhow::Error> { 
+    fn parse_rpc_params(params: &Vec<String>, raw: &bool) -> Result<Value, anyhow::Error> {
         let params = if *raw {
             if params.is_empty() {
                 serde_json::Deserializer::from_reader(std::io::stdin())
@@ -229,7 +229,7 @@ impl RpcCommand {
             input,
             ..
         } = self;
-        
+
         let parsed_params;
         if let Some(path) = input {
             //TODO: have this accept json of values
@@ -238,15 +238,25 @@ impl RpcCommand {
 
             let lines = reader.lines().fold(Vec::new(), |mut lines, line| {
                 let line_content = line.unwrap();
-                let values: Vec<String> = line_content.trim().split(' ').map(|s| s.trim().to_string()).collect();
+                let values: Vec<String> = line_content
+                    .trim()
+                    .split(' ')
+                    .map(|s| s.trim().to_string())
+                    .collect();
                 lines.push(values);
                 lines
             });
-            parsed_params = lines.iter().map(|param| Self::parse_rpc_params(&param, raw).unwrap()).collect();
+            parsed_params = lines
+                .iter()
+                .map(|param| Self::parse_rpc_params(&param, raw).unwrap())
+                .collect();
         } else {
             //TODO: remove unwrap -> Claps interface requires this for optional args
             let params = params.as_ref().unwrap();
-            parsed_params = params.iter().map(|param| Self::parse_rpc_params(&param, raw).unwrap()).collect();
+            parsed_params = params
+                .iter()
+                .map(|param| Self::parse_rpc_params(&param, raw).unwrap())
+                .collect();
         }
 
         Ok((method.to_string(), parsed_params))

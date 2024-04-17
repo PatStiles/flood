@@ -63,11 +63,10 @@ fn load_report_or_abort(path: &Path) -> Report {
 /// Connects to the eth node and returns the session
 async fn connect(urls: &Option<Vec<String>>) -> Result<(Vec<Context>, Vec<Option<NodeInfo>>)> {
     let urls = if urls.is_none() {
-        match std::env::var("HTTP_PROVIDER_URL")
-            .map_err(FloodError::EnvVar) {
-                Ok(url) => vec![url],
-                Err(_) => vec!["http://127.0.0.1:8545".to_string()]
-            }
+        match std::env::var("HTTP_PROVIDER_URL").map_err(FloodError::EnvVar) {
+            Ok(url) => vec![url],
+            Err(_) => vec!["http://127.0.0.1:8545".to_string()],
+        }
     } else {
         urls.clone().unwrap()
     };
@@ -105,7 +104,15 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
 
         // Build requests for particular session
         let (call, params) = conf.parse_params().unwrap();
-        let requests = params.into_iter().map(|param| session.session.make_request(call.clone(), param).box_params()).collect::<Vec<_>>();
+        let requests = params
+            .into_iter()
+            .map(|param| {
+                session
+                    .session
+                    .make_request(call.clone(), param)
+                    .box_params()
+            })
+            .collect::<Vec<_>>();
 
         let runner = Workload::new(session.clone()?, requests);
         let interrupt = Arc::new(InterruptHandler::install());
@@ -131,7 +138,7 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         if interrupt.is_interrupted() {
             return Err(FloodError::Interrupted);
         }
-        
+
         eprintln!("info: Running benchmark...");
 
         println!(
