@@ -1,5 +1,5 @@
 [package]
-name = "latte-cli"
+name = "flood-cli"
 description = "A database benchmarking tool for Apache Cassandra"
 version = "0.25.0"
 authors = ["Piotr Kołaczkowski <pkolaczk@gmail.com>"]
@@ -8,7 +8,7 @@ readme = "README.md"
 license = "Apache-2.0"
 
 [[bin]]
-name = "latte"
+name = "flood"
 path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -232,18 +232,19 @@ impl RpcCommand {
         
         let parsed_params;
         if let Some(path) = input {
+            //TODO: have this accept json of values
             let file = File::open(path)?;
             let reader = BufReader::new(file);
 
             let lines = reader.lines().fold(Vec::new(), |mut lines, line| {
                 let line_content = line.unwrap();
-                let values: Vec<String> = line_content.split(',').map(|s| s.trim().to_string()).collect();
+                let values: Vec<String> = line_content.trim().split(' ').map(|s| s.trim().to_string()).collect();
                 lines.push(values);
                 lines
             });
             parsed_params = lines.iter().map(|param| Self::parse_rpc_params(&param, raw).unwrap()).collect();
         } else {
-            //TODO: remove
+            //TODO: remove unwrap -> Claps interface requires this for optional args
             let params = params.as_ref().unwrap();
             parsed_params = params.iter().map(|param| Self::parse_rpc_params(&param, raw).unwrap()).collect();
         }
