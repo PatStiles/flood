@@ -6,7 +6,7 @@
 ## Single JSON-RPC
 ```bash
 
-target/debug/flood rpc eth_getBlockByNumber "0x1b4 true" --rpc-url [<RPC_URL>..] --rate 10 100           
+target/debug/flood rpc eth_getBlockByNumber "0x1b4 true" --rpc-url [<RPC_URL>..] --rate 100
 target/debug/flood rpc eth_getStorageAt "0x295a70b2de5e3953354a6a8344e616ed314d7251 0x0 latest" --rpc-url [<RPC_URL>..] --rate 100
 
 ```
@@ -18,6 +18,6 @@ target/debug/flood rpc eth_getBlockByNumber "0x1b4 true","0x242 true" --rpc-url 
 
 ## Multiple JSON-RPC requests from file
 ```bash
-target/debug/flood rpc eth_getBlockByNumber --input ./examples/eth_getBlockByNumber.txt --rpc-url [<RPC_URL>..] --rate 100
+target/debug/flood rpc eth_getBlockByNumber --input examples/eth_getBlockByNumber.txt --rpc-url [<RPC_URL>..] --rate 100
 target/debug/flood rpc eth_getStorageAt --input examples/eth_getStorageAt.txt --rpc-url [<RPC_URL>..] --rate 100
 ```
