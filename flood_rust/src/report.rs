@@ -471,7 +471,7 @@ impl<'a> Display for RpcConfigCmp<'a> {
             }),
             self.line("Max Rate(s)", "op/s", |conf| 
                 //TODO: better error handling
-                conf.rate.as_ref().unwrap_or(&vec![0_f64]).iter().map(|r| { let q = Quantity::from(r); format!("{q}") }).collect::<Vec<String>>().join(", ")),
+                conf.rate.iter().map(|r| { let q = Quantity::from(r); format!("{q}") }).collect::<Vec<String>>().join(", ")),
             self.line("Warmup", "s", |conf| {
                 Quantity::from(conf.warmup_duration.seconds())
             }),
