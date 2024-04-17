@@ -110,7 +110,7 @@ pub struct RpcCommand {
     /// Number of cycles per second to execute.
     /// If not given, the benchmark cycles will be executed as fast as possible.
     // TODO: add reserved word for logarithmic ramp up
-    #[clap(short('r'), long, value_name = "COUNT", num_args(0..))]
+    #[clap(short('r'), long, required = true, value_name = "COUNT", num_args(0..))]
     pub rate: Vec<f64>,
 
     /// Number of cycles or duration of the warmup phase.
