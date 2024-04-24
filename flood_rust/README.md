@@ -16,12 +16,20 @@ target/debug/flood rpc eth_getStorageAt "0x295a70b2de5e3953354a6a8344e616ed314d7
 #### Multiple JSON-RPC requests with different parameters
 ```bash
 cargo b --bins
+
 target/debug/flood rpc eth_getBlockByNumber "0x1b4 true","0x242 true" --rpc-url [<RPC_URL>..] --rate 100
+```
+
+#### Multiple JSON-RPC requests over a range of parameters (Supports ranges for a single parameter within a list, multiple ranged parameters not allowed)
+```bash
+cargo b --bins
+
+target/debug/flood rpc eth_getBlockByNumber "0x1b4..0x1bb true","0x242..0x24b true" --rpc-url [<RPC_URL>..] --rate 100
 ```
 
 #### Multiple JSON-RPC requests from file
 ```bash
 cargo b --bins
-target/debug/flood rpc eth_getBlockByNumber --input examples/eth_getBlockByNumber.txt --rpc-url [<RPC_URL>..] --rate 100
-target/debug/flood rpc eth_getStorageAt --input examples/eth_getStorageAt.txt --rpc-url [<RPC_URL>..] --rate 100
+target/debug/flood rpc --input examples/eth_getBlockByNumber.json --rpc-url [<RPC_URL>..] --rate 100
+target/debug/flood rpc --input examples/eth_getStorageAt.json --rpc-url [<RPC_URL>..] --rate 100
 ```
