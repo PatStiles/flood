@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -69,12 +69,36 @@ impl FromStr for Interval {
     }
 }
 
-fn parse_params(s: &str) -> Result<Vec<String>, String> {
-    println!("PARAMS params {:?}", s);
-    match s.contains(',') {
-        true => Ok(s.split(' ').map(|s| s.to_string()).collect()),
-        false => Ok(vec![s.to_string()]),
+fn parse_range(input: &str) -> Result<Vec<String>, &'static str> {
+    let parts: Vec<&str> = input.split("..").collect();
+
+    if parts.len() != 2 {
+        return Err("Invalid range format. Use START..END or START..=END");
     }
+
+    let inclusive = parts[1].starts_with('=');
+    let start = i32::from_str_radix(parts[0].trim_start_matches("0x"), 16).unwrap();
+    let end = if inclusive {
+        i32::from_str_radix(&parts[1].trim_start_matches("=0x"), 16).unwrap()
+    } else {
+        i32::from_str_radix(parts[1].trim_start_matches("0x"), 16).unwrap()
+    };
+
+    if start > end {
+        return Err("Start value cannot be greater than end value");
+    }
+
+    let range: Vec<String> = if inclusive {
+        (start..=end).map(|x| format!("0x{:02x}", x)).collect()
+    } else {
+        (start..end).map(|x| format!("0x{:02x}", x)).collect()
+    };
+
+    Ok(range)
+}
+
+fn parse_params(s: &str) -> Result<Vec<String>, String> {
+    Ok(s.split(' ').map(|s| s.to_string()).collect())
 }
 
 // Taken from cast cli: https://github.com/foundry-rs/foundry/blob/master/crates/cast/bin/cmd/rpc.rs
@@ -82,7 +106,8 @@ fn parse_params(s: &str) -> Result<Vec<String>, String> {
 #[derive(Parser, Clone, Debug, Serialize, Deserialize)]
 pub struct RpcCommand {
     /// RPC method name
-    method: String,
+    #[arg(required_unless_present = "input")]
+    method: Option<String>,
 
     /// RPC parameters
     ///
@@ -93,7 +118,11 @@ pub struct RpcCommand {
     ///
     /// flood rpc eth_getBlockByNumber 0x123 false
     //TODO: this accepts any number of params and parses shouldn't???
-    #[arg(value_parser(parse_params), value_delimiter = ',')]
+    #[arg(
+        required_unless_present = "input",
+        value_parser(parse_params),
+        value_delimiter = ','
+    )]
     pub params: Option<Vec<Vec<String>>>,
 
     /// Send raw JSON parameters
@@ -186,6 +215,12 @@ pub struct RpcCommand {
     pub chain_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct JsonRequest {
+    method: String,
+    params: serde_json::Value,
+}
+
 /*
 TODO:
 - north star = be able to collect a single production quality dataset
@@ -221,7 +256,54 @@ impl RpcCommand {
         serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value))
     }
 
-    pub fn parse_params(&self) -> Result<(String, Vec<Value>), anyhow::Error> {
+    fn parse_file(path: &PathBuf) -> Vec<(String, Value)> {
+        // Check if the specified file exists and is a .json file
+        if let Some(extension) = path.extension() {
+            if extension != "json" {
+                eprintln!("Error: File is not a .json file");
+                std::process::exit(1);
+            }
+        } else {
+            eprintln!("Error: File does not have an extension");
+            std::process::exit(1);
+        }
+
+        // Read the contents of the file
+        let mut file = match File::open(&path) {
+            Ok(file) => file,
+            Err(_) => {
+                eprintln!("Error: Failed to open the file");
+                std::process::exit(1);
+            }
+        };
+
+        let mut contents = String::new();
+
+        if let Err(_) = file.read_to_string(&mut contents) {
+            eprintln!("Error: Failed to read the file");
+            std::process::exit(1);
+        }
+
+        // Parse JSON-RPC requests
+        let json_requests: Vec<JsonRequest> = match serde_json::from_str(&contents) {
+            Ok(json_requests) => json_requests,
+            Err(_) => {
+                eprintln!("Error: Failed to parse JSON");
+                std::process::exit(1);
+            }
+        };
+
+        // Extract method and params from each request
+        // TODO: verify this works for Value and String types...
+        let parsed_requests: Vec<(String, serde_json::Value)> = json_requests
+            .iter()
+            .map(|req| (req.method.clone(), req.params.clone()))
+            .collect();
+
+        parsed_requests
+    }
+
+    pub fn parse_params(&self) -> Result<Vec<(String, Value)>, anyhow::Error> {
         let RpcCommand {
             raw,
             method,
@@ -230,36 +312,42 @@ impl RpcCommand {
             ..
         } = self;
 
-        let parsed_params;
         if let Some(path) = input {
-            //TODO: have this accept json of values
-            let file = File::open(path)?;
-            let reader = BufReader::new(file);
-
-            let lines = reader.lines().fold(Vec::new(), |mut lines, line| {
-                let line_content = line.unwrap();
-                let values: Vec<String> = line_content
-                    .trim()
-                    .split(' ')
-                    .map(|s| s.trim().to_string())
-                    .collect();
-                lines.push(values);
-                lines
-            });
-            parsed_params = lines
-                .iter()
-                .map(|param| Self::parse_rpc_params(&param, raw).unwrap())
-                .collect();
+            Ok(Self::parse_file(path))
         } else {
             //TODO: remove unwrap -> Claps interface requires this for optional args
+            //TODO: abstract this into a generate args function -> maybne leverage arbitrary
             let params = params.as_ref().unwrap();
-            parsed_params = params
+            let method = method.as_ref().unwrap();
+            let params = params.iter().fold(Vec::new(), |mut acc, param| {
+                let mut has_range = false;
+                for (j, token) in param.iter().enumerate() {
+                    //TODO: generalize so it so it records range values and param indexes then generates data from that new set.
+                    if token.contains("..") {
+                        has_range = true;
+                        let range = parse_range(token).unwrap();
+                        for val in range {
+                            let mut new_param = param.clone();
+                            new_param[j] = val.clone();
+                            acc.push(new_param);
+                        }
+                        //For now we only allow one range per parameters
+                        break;
+                    }
+                }
+                if has_range {
+                    acc
+                } else {
+                    acc.push(param.clone());
+                    acc
+                }
+            });
+            let reqs: Vec<(String, Value)> = params
                 .iter()
-                .map(|param| Self::parse_rpc_params(&param, raw).unwrap())
+                .map(|param| (method.clone(), Self::parse_rpc_params(&param, raw).unwrap()))
                 .collect();
+            Ok(reqs)
         }
-
-        Ok((method.to_string(), parsed_params))
     }
 
     pub fn set_timestamp_if_empty(mut self) -> Self {
@@ -271,7 +359,11 @@ impl RpcCommand {
 
     /// Returns benchmark name
     pub fn name(&self) -> String {
-        self.method.clone()
+        //TODO: address this mess
+        self.method
+            .as_ref()
+            .unwrap_or(&self.input.as_ref().unwrap().to_str().unwrap().to_string())
+            .clone()
     }
 
     /// Suggested file name where to save the results of the run.
