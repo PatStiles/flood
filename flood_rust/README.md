@@ -56,3 +56,9 @@ cargo b --bins
 target/debug/flood rpc --input examples/eth_getBlockByNumber.json --rpc-url [<RPC_URL>..] --rate 100
 target/debug/flood rpc --input examples/eth_getStorageAt.json --rpc-url [<RPC_URL>..] --rate 100
 ```
+
+## Glossary
+- **Workload**: Unit of work repeatedly measured. In the Context of JSON-RPC with maybe one or many JSON-RPC calls.
+- **Cycle**: One execution of a Workload.
+- **Op(s)**: another term for cycle.
+- **Call**: Single JSON-RPC Call.
