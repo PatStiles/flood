@@ -207,14 +207,6 @@ pub struct RpcCommand {
     #[clap(long)]
     pub choose: bool,
 
-    /// Don't display the progress bar.
-    #[clap(long)]
-    pub batched: bool,
-
-    /// Save reports as Parquet file
-    #[clap(long)]
-    pub parquet: bool,
-
     //TODO: add default value
     /// Eth Node RPC-URL
     #[clap(short('u'), long, num_args(0..))]
@@ -228,7 +220,7 @@ pub struct RpcCommand {
     pub timestamp: Option<i64>,
 
     /// Number of requests per workload set during parse_params
-    #[clap(hide = true, long, default_value = "1")]
+    #[clap(hide = true, long)]
     pub num_req: Option<usize>,
 
     #[clap(skip)]
@@ -395,6 +387,11 @@ impl RpcCommand {
         self
     }
 
+    pub fn set_rates(mut self, rates: Option<Vec<f64>>) -> Self {
+        self.rate = rates;
+        self
+    }
+
     /// Parses rate for run
     pub fn parse_rate(&self) -> Option<Vec<f64>> {
         let num_req = self.num_req.unwrap();
@@ -425,7 +422,7 @@ impl RpcCommand {
         //TODO: address this mess
         self.method
             .as_ref()
-            .unwrap_or(&self.input.as_ref().unwrap().to_str().unwrap().to_string())
+            .unwrap_or(&"default".to_string())
             .clone()
     }
 

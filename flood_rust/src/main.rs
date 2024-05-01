@@ -96,7 +96,9 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
     let conf = conf.set_timestamp_if_empty();
     let compare = conf.baseline.as_ref().map(|p| load_report_or_abort(p));
     let reqs = conf.parse_params().unwrap();
-    let mut conf = conf.set_num_req(reqs.len());
+    let conf = conf.set_num_req(reqs.len());
+    let rates = conf.parse_rate();
+    let mut conf = conf.set_rates(rates.clone());
 
     let (sessions, node_info) = connect(&conf.rpc_url).await?;
     for (session, node_info) in sessions.iter().zip(node_info.iter()) {
@@ -146,7 +148,7 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
             }
         );
 
-        if let Some(rates) = conf.parse_rate() {
+        if let Some(rates) = rates.clone() {
             for rate in rates {
                 run_bench(&conf, &runner, &interrupt, &compare, Some(rate)).await?;
             }
