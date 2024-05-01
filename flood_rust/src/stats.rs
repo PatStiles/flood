@@ -299,7 +299,7 @@ impl Sample {
 
         for s in stats {
             let ss = &s.session_stats;
-            let fs = &s.function_stats;
+            let fs = &s.workload_stats;
             request_count += ss.req_count;
             row_count += ss.row_count;
             if errors.len() < MAX_KEPT_ERRORS {
@@ -311,9 +311,9 @@ impl Sample {
             resp_times_ns.add(&ss.resp_times_ns).unwrap();
             resp_time_histogram_ns.add(&ss.resp_times_ns).unwrap();
 
-            cycle_count += fs.call_count;
-            cycle_times_ns.add(&fs.call_times_ns).unwrap();
-            cycle_time_histogram_ns.add(&fs.call_times_ns).unwrap();
+            cycle_count += fs.workload_count;
+            cycle_times_ns.add(&fs.workload_times_ns).unwrap();
+            cycle_time_histogram_ns.add(&fs.workload_times_ns).unwrap();
         }
         let resp_time_percentiles = percentiles_ms(&resp_times_ns);
         let call_time_percentiles = percentiles_ms(&cycle_times_ns);
@@ -594,7 +594,7 @@ impl Recorder {
                 .add(&s.session_stats.resp_times_ns)
                 .unwrap();
             self.cycle_times_ns
-                .add(&s.function_stats.call_times_ns)
+                .add(&s.workload_stats.workload_times_ns)
                 .unwrap();
         }
         let stats = Sample::new(self.start_instant, samples);

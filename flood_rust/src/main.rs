@@ -93,8 +93,10 @@ async fn connect(urls: &Option<Vec<String>>) -> Result<(Vec<Context>, Vec<Option
 }
 
 async fn rpc(conf: RpcCommand) -> Result<()> {
-    let mut conf = conf.set_timestamp_if_empty();
+    let conf = conf.set_timestamp_if_empty();
     let compare = conf.baseline.as_ref().map(|p| load_report_or_abort(p));
+    let reqs = conf.parse_params().unwrap();
+    let mut conf = conf.set_num_req(reqs.len());
 
     let (sessions, node_info) = connect(&conf.rpc_url).await?;
     for (session, node_info) in sessions.iter().zip(node_info.iter()) {
@@ -103,8 +105,7 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         }
 
         // Build requests for particular session
-        let reqs = conf.parse_params().unwrap();
-        let requests = reqs
+        let requests = reqs.clone()
             .into_iter()
             .map(|(method, param)| session.session.make_request(method, param).box_params())
             .collect::<Vec<_>>();
@@ -144,47 +145,62 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
             }
         );
 
-        for rate in conf.rate.clone() {
-            let exec_options = ExecutionOptions {
-                duration: conf.run_duration.clone(),
-                concurrency: conf.concurrency.clone(),
-                rate: Some(rate),
-                threads: conf.threads.clone(),
-            };
-
-            report::print_log_header();
-            let stats = par_execute(
-                "Running...",
-                &exec_options,
-                conf.sampling_interval.clone(),
-                runner.clone()?,
-                interrupt.clone(),
-                !conf.quiet.clone(),
-            )
-            .await?;
-
-            let stats_cmp = BenchmarkCmp {
-                v1: &stats,
-                v2: compare.as_ref().map(|c| &c.result),
-            };
-            println!();
-            println!("{}", &stats_cmp);
-
-            let path = conf
-                .output
-                .clone()
-                .unwrap_or_else(|| conf.default_output_file_name("json"));
-
-            let report = Report::new(conf.clone(), stats);
-            match report.save(&path) {
-                Ok(()) => {
-                    eprintln!("info: Saved report to {}", path.display());
-                }
-                Err(e) => {
-                    eprintln!("error: Failed to save report to {}: {}", path.display(), e);
-                    exit(1);
-                }
+        if let Some(rates) = conf.parse_rate() {
+            for rate in rates {
+                run_bench(&conf, &runner, &interrupt, &compare, Some(rate)).await?;
             }
+        } else {
+            run_bench(&conf, &runner, &interrupt, &compare, None).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn run_bench(
+    conf: &RpcCommand,
+    runner: &Workload,
+    interrupt: &Arc<InterruptHandler>,
+    compare: &Option<Report>,
+    rate: Option<f64>,
+) -> Result<()> {
+    let exec_options = ExecutionOptions {
+        duration: conf.run_duration.clone(),
+        concurrency: conf.concurrency.clone(),
+        rate,
+        threads: conf.threads.clone(),
+    };
+
+    report::print_log_header();
+    let stats = par_execute(
+        "Running...",
+        &exec_options,
+        conf.sampling_interval.clone(),
+        runner.clone()?,
+        interrupt.clone(),
+        !conf.quiet.clone(),
+    )
+    .await?;
+
+    let stats_cmp = BenchmarkCmp {
+        v1: &stats,
+        v2: compare.as_ref().map(|c| &c.result),
+    };
+    println!();
+    println!("{}", &stats_cmp);
+
+    let path = conf
+        .output
+        .clone()
+        .unwrap_or_else(|| conf.default_output_file_name("json"));
+
+    let report = Report::new(conf.clone(), stats);
+    match report.save(&path) {
+        Ok(()) => {
+            eprintln!("info: Saved report to {}", path.display());
+        }
+        Err(e) => {
+            eprintln!("error: Failed to save report to {}: {}", path.display(), e);
+            exit(1);
         }
     }
     Ok(())

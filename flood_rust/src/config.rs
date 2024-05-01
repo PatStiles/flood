@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -139,8 +139,8 @@ pub struct RpcCommand {
     /// Number of cycles per second to execute.
     /// If not given, the benchmark cycles will be executed as fast as possible.
     // TODO: add reserved word for logarithmic ramp up
-    #[clap(short('r'), long, required = true, value_name = "COUNT", num_args(0..))]
-    pub rate: Vec<f64>,
+    #[clap(short('r'), long, value_name = "COUNT", num_args(0..))]
+    pub rate: Option<Vec<f64>>,
 
     /// Number of cycles or duration of the warmup phase.
     #[clap(
@@ -204,9 +204,16 @@ pub struct RpcCommand {
     #[clap(short('u'), long, num_args(0..))]
     pub rpc_url: Option<Vec<String>>,
 
+    #[clap(short('e'), long)]
+    pub exp_ramp: Option<u64>,
+
     /// Seconds since 1970-01-01T00:00:00Z
     #[clap(hide = true, long)]
     pub timestamp: Option<i64>,
+
+    /// Number of requests per workload set during parse_params
+    #[clap(hide = true, long, default_value = "1")]
+    pub num_req: Option<usize>,
 
     #[clap(skip)]
     pub cluster_name: Option<String>,
@@ -313,7 +320,8 @@ impl RpcCommand {
         } = self;
 
         if let Some(path) = input {
-            Ok(Self::parse_file(path))
+            let reqs = Self::parse_file(path);
+            Ok(reqs)
         } else {
             //TODO: remove unwrap -> Claps interface requires this for optional args
             //TODO: abstract this into a generate args function -> maybne leverage arbitrary
@@ -355,6 +363,38 @@ impl RpcCommand {
             self.timestamp = Some(Utc::now().timestamp())
         }
         self
+    }
+
+    pub fn set_num_req(mut self, num_req: usize) -> Self {
+        if self.num_req.is_none() {
+            self.num_req = Some(num_req)
+        }
+        self
+    }
+
+    /// Parses rate for run
+    pub fn parse_rate(&self) -> Option<Vec<f64>> {
+        let num_req = self.num_req.unwrap();
+        if let Some(max_rate) = self.exp_ramp {
+            let num_values = 10;
+            let mut log_rates = Vec::with_capacity(num_values);
+            let start_rate = (10 / num_req) as f64;
+            let max_rate = (max_rate / num_req as u64) as f64;
+            for i in 0..num_values {
+                let ratio = i as f64 / (num_values - 1) as f64;
+                let rate = start_rate
+                    * std::f64::consts::E.powf((max_rate.log10() - start_rate.log10()) * ratio);
+                log_rates.push(rate);
+            }
+
+            return Some(log_rates)
+        }
+        // If not set return None
+        if let Some(rate) = &self.rate {
+            Some(rate.into_iter().map(|r| r / num_req as f64).collect())
+        } else {
+            None
+        }
     }
 
     /// Returns benchmark name

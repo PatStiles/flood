@@ -16,14 +16,14 @@ use crate::{Context, SessionStats};
 /// Tracks statistics of the Rune function invoked by the workload
 #[derive(Clone, Debug)]
 pub struct FnStats {
-    pub call_count: u64,
-    pub call_times_ns: Histogram<u64>,
+    pub workload_count: u64,
+    pub workload_times_ns: Histogram<u64>,
 }
 
 impl FnStats {
     pub fn operation_completed(&mut self, duration: Duration) {
-        self.call_count += 1;
-        self.call_times_ns
+        self.workload_count += 1;
+        self.workload_times_ns
             .record(duration.as_nanos().clamp(1, u64::MAX as u128) as u64)
             .unwrap();
     }
@@ -32,17 +32,17 @@ impl FnStats {
 impl Default for FnStats {
     fn default() -> Self {
         FnStats {
-            call_count: 0,
-            call_times_ns: Histogram::new(3).unwrap(),
+            workload_count: 0,
+            workload_times_ns: Histogram::new(3).unwrap(),
         }
     }
 }
 
-/// Statistics of operations (function calls) and Cassandra requests.
+/// Statistics of Workload execution and Eth JSON-RPC requests.
 pub struct WorkloadStats {
     pub start_time: Instant,
     pub end_time: Instant,
-    pub function_stats: FnStats,
+    pub workload_stats: FnStats,
     pub session_stats: SessionStats,
 }
 
@@ -65,6 +65,7 @@ pub struct Workload {
     context: Context,
     state: TryLock<WorkloadState>,
     requests: Vec<Request<Box<RawValue>>>,
+    pub req_len: usize,
 }
 
 impl Workload {
@@ -72,7 +73,8 @@ impl Workload {
         Workload {
             context,
             state: TryLock::new(WorkloadState::default()),
-            requests,
+            requests: requests.clone(),
+            req_len: requests.len(),
         }
     }
 
@@ -82,9 +84,12 @@ impl Workload {
             // make a deep copy to avoid congestion on Arc ref counts used heavily by Rune
             state: TryLock::new(WorkloadState::default()),
             requests: self.requests.clone(),
+            req_len: self.req_len.clone(),
         })
     }
 
+    //TODO: check this logic... should workload just execute in loop and we randomize beforehand??? -> Probs yes.
+    //TOOD: add batch calls????
     pub async fn call(&self) -> Result<(), FloodError> {
         for call in self.requests.clone() {
             let start_time = self.context.stats.try_lock().unwrap().start_request();
@@ -154,7 +159,7 @@ impl Workload {
         let result = WorkloadStats {
             start_time: state.start_time,
             end_time,
-            function_stats: state.fn_stats.clone(),
+            workload_stats: state.fn_stats.clone(),
             session_stats: self.context().take_session_stats(),
         };
         state.start_time = end_time;
