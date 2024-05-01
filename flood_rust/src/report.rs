@@ -59,7 +59,12 @@ impl Report {
     /// Saves benchmark results to a JSON file
     pub fn save(&self, path: &Path) -> io::Result<()> {
         let f = fs::File::create(path)?;
-        serde_json::to_writer_pretty(f, &self)?;
+        if self.conf.parquet {
+            //TODO create parquet schema
+            serde_json::to_writer_pretty(f, &self)?;
+        } else {
+            serde_json::to_writer_pretty(f, &self)?;
+        }
         Ok(())
     }
 }
@@ -451,9 +456,7 @@ impl<'a> Display for RpcConfigCmp<'a> {
             self.line("Cluster", "", |conf| {
                 OptionDisplay(conf.cluster_name.clone())
             }),
-            self.line("Chain ID", "", |conf| {
-                OptionDisplay(conf.chain_id.clone())
-            }),
+            self.line("Chain ID", "", |conf| OptionDisplay(conf.chain_id.clone())),
             self.line("Tags", "", |conf| conf.tags.iter().join(", ")),
         ];
 
@@ -469,10 +472,9 @@ impl<'a> Display for RpcConfigCmp<'a> {
             self.line("Concurrency", "req", |conf| {
                 Quantity::from(conf.concurrency)
             }),
-            //TODO: add requests per workload
-            //TODO: add total requests
-            //TODO: add successful requests
-            //TODO: add failed requests
+            self.line("Reqs / Workload", "req", |conf| {
+                Quantity::from(conf.num_req)
+            }),
             self.line("Max Rate(s)", "op/s", |conf| 
                 //TODO: better error handling
                 conf.rate.as_ref().unwrap_or(&vec![10f64]).into_iter().map(|r| { let q = Quantity::from(r); format!("{q}") }).collect::<Vec<String>>().join(", ")),
@@ -567,18 +569,17 @@ impl<'a> Display for BenchmarkCmp<'a> {
             self.line("CPU utilisation", "%", |s| {
                 Quantity::from(s.cpu_util).with_precision(1)
             }),
-            // Number workloads -> Batched, series of Tx
-            self.line("Cycles", "op", |s| Quantity::from(s.cycle_count)),
+            self.line("Workloads", "op", |s| Quantity::from(s.cycle_count)),
             self.line("Errors", "op", |s| Quantity::from(s.error_count)),
             self.line("└─", "%", |s| {
                 Quantity::from(s.errors_ratio).with_precision(1)
             }),
-            self.line("Total Requests", "req", |s| Quantity::from(s.request_count)),
-            self.line("└─", "req/cycle", |s| {
-                Quantity::from(s.requests_per_cycle).with_precision(1)
-            }),
             //TODO: add successful requests cound
             //TODO: add failed requests cound
+            self.line("Total Requests", "req", |s| Quantity::from(s.request_count)),
+            self.line("└─", "req/workload", |s| {
+                Quantity::from(s.requests_per_cycle).with_precision(1)
+            }),
             self.line("Samples", "", |s| Quantity::from(s.log.len())),
             self.line("Mean sample size", "op", |s| {
                 Quantity::from(s.log.iter().map(|s| s.cycle_count as f64).mean())
@@ -596,6 +597,7 @@ impl<'a> Display for BenchmarkCmp<'a> {
                 .with_significance(self.cmp_req_throughput())
                 .with_orientation(1)
                 .into_box(),
+            //TODO: eliminate
             self.line("└─", "row/s", |s| Quantity::from(s.row_throughput))
                 .with_significance(self.cmp_row_throughput())
                 .with_orientation(1)

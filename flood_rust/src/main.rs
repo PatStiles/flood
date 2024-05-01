@@ -105,12 +105,13 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
         }
 
         // Build requests for particular session
-        let requests = reqs.clone()
+        let requests = reqs
+            .clone()
             .into_iter()
             .map(|(method, param)| session.session.make_request(method, param).box_params())
             .collect::<Vec<_>>();
 
-        let runner = Workload::new(session.clone()?, requests);
+        let runner = Workload::new(session.clone()?, requests, &conf);
         let interrupt = Arc::new(InterruptHandler::install());
         if conf.warmup_duration.is_not_zero() {
             eprintln!("info: Warming up...");

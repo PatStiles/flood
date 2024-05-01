@@ -7,9 +7,11 @@ use alloy_json_rpc::RpcError;
 use alloy_rpc_client::RpcCall;
 use alloy_transport::TransportErrorKind;
 use hdrhistogram::Histogram;
+use rand::prelude::SliceRandom;
 use serde_json::value::RawValue;
 use try_lock::TryLock;
 
+use crate::config::RpcCommand;
 use crate::error::FloodError;
 use crate::{Context, SessionStats};
 
@@ -65,16 +67,18 @@ pub struct Workload {
     context: Context,
     state: TryLock<WorkloadState>,
     requests: Vec<Request<Box<RawValue>>>,
-    pub req_len: usize,
+    random: bool,
+    choose: bool,
 }
 
 impl Workload {
-    pub fn new(context: Context, requests: Vec<Request<Box<RawValue>>>) -> Workload {
+    pub fn new(context: Context, requests: Vec<Request<Box<RawValue>>>, conf: &RpcCommand) -> Workload {
         Workload {
             context,
             state: TryLock::new(WorkloadState::default()),
             requests: requests.clone(),
-            req_len: requests.len(),
+            random: conf.random,
+            choose: conf.choose,
         }
     }
 
@@ -84,14 +88,14 @@ impl Workload {
             // make a deep copy to avoid congestion on Arc ref counts used heavily by Rune
             state: TryLock::new(WorkloadState::default()),
             requests: self.requests.clone(),
-            req_len: self.req_len.clone(),
+            random: self.random.clone(),
+            choose: self.choose.clone(),
         })
     }
 
-    //TODO: check this logic... should workload just execute in loop and we randomize beforehand??? -> Probs yes.
-    //TOOD: add batch calls????
-    pub async fn call(&self) -> Result<(), FloodError> {
-        for call in self.requests.clone() {
+    /// Executes all calls within a workload
+    pub async fn call(&self, requests: Vec<Request<Box<RawValue>>>) -> Result<(), FloodError> {
+        for call in requests {
             let start_time = self.context.stats.try_lock().unwrap().start_request();
             // Each workload object can be a single, multiple, or batch of requests.
             // This can fuck with measurements as we basically want to define a workload of different params, bench the entire execution and the execution of individual request....
@@ -119,19 +123,23 @@ impl Workload {
     /// This should be idempotent –
     /// the generated action should be a function of the iteration number.
     /// Returns the cycle number and the end time of the query.
-    // TODO: separate workload from call.
     pub async fn run(&self, cycle: u64) -> Result<(u64, Instant), FloodError> {
+        let mut requests = self.requests.clone();
+        //TODO: move these branches out of the hot loop
+        if self.random {
+            requests.shuffle(&mut rand::thread_rng())
+        } else if self.choose {
+            requests = vec![requests.choose(&mut rand::thread_rng()).unwrap().clone()]
+        }
         let start_time = Instant::now();
-        let rs = self.call().await;
+        let rs = self.call(requests).await;
         let end_time = Instant::now();
         let mut state = self.state.try_lock().unwrap();
         //NOTE: This is per workload stats
         state.fn_stats.operation_completed(end_time - start_time);
 
-        //TODO: store and analyze results later???
         match rs {
             Ok(_) => Ok((cycle, end_time)),
-            //TODO: all but eth call have "deserialization error: invalid type: boolean `false`, expected unit at line 1 column 5"
             Err(_) => Ok((cycle, end_time)),
         }
     }

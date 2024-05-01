@@ -199,6 +199,22 @@ pub struct RpcCommand {
     #[clap(short, long)]
     pub quiet: bool,
 
+    /// Randomize the execution order of specified calls between workload calls
+    #[clap(long)]
+    pub random: bool,
+
+    /// Randomly select and execute a single call from a list of calls
+    #[clap(long)]
+    pub choose: bool,
+
+    /// Don't display the progress bar.
+    #[clap(long)]
+    pub batched: bool,
+
+    /// Save reports as Parquet file
+    #[clap(long)]
+    pub parquet: bool,
+
     //TODO: add default value
     /// Eth Node RPC-URL
     #[clap(short('u'), long, num_args(0..))]
@@ -319,43 +335,45 @@ impl RpcCommand {
             ..
         } = self;
 
-        if let Some(path) = input {
-            let reqs = Self::parse_file(path);
-            Ok(reqs)
-        } else {
-            //TODO: remove unwrap -> Claps interface requires this for optional args
-            //TODO: abstract this into a generate args function -> maybne leverage arbitrary
-            let params = params.as_ref().unwrap();
-            let method = method.as_ref().unwrap();
-            let params = params.iter().fold(Vec::new(), |mut acc, param| {
-                let mut has_range = false;
-                for (j, token) in param.iter().enumerate() {
-                    //TODO: generalize so it so it records range values and param indexes then generates data from that new set.
-                    if token.contains("..") {
-                        has_range = true;
-                        let range = parse_range(token).unwrap();
-                        for val in range {
-                            let mut new_param = param.clone();
-                            new_param[j] = val.clone();
-                            acc.push(new_param);
+        let requests = match input {
+            Some(path) => Self::parse_file(path),
+            None => {
+                //TODO: remove unwrap -> Claps interface requires this for optional args
+                //TODO: abstract this into a generate args function -> maybne leverage arbitrary
+                let params = params.as_ref().unwrap();
+                let method = method.as_ref().unwrap();
+                let params = params.iter().fold(Vec::new(), |mut acc, param| {
+                    let mut has_range = false;
+                    for (j, token) in param.iter().enumerate() {
+                        //TODO: generalize so it so it records range values and param indexes then generates data from that new set.
+                        if token.contains("..") {
+                            has_range = true;
+                            let range = parse_range(token).unwrap();
+                            for val in range {
+                                let mut new_param = param.clone();
+                                new_param[j] = val.clone();
+                                acc.push(new_param);
+                            }
+                            //For now we only allow one range per parameters
+                            break;
                         }
-                        //For now we only allow one range per parameters
-                        break;
                     }
-                }
-                if has_range {
-                    acc
-                } else {
-                    acc.push(param.clone());
-                    acc
-                }
-            });
-            let reqs: Vec<(String, Value)> = params
-                .iter()
-                .map(|param| (method.clone(), Self::parse_rpc_params(&param, raw).unwrap()))
-                .collect();
-            Ok(reqs)
-        }
+                    if has_range {
+                        acc
+                    } else {
+                        acc.push(param.clone());
+                        acc
+                    }
+                });
+                let reqs: Vec<(String, Value)> = params
+                    .iter()
+                    .map(|param| (method.clone(), Self::parse_rpc_params(&param, raw).unwrap()))
+                    .collect();
+                reqs
+            }
+        };
+
+        Ok(requests)
     }
 
     pub fn set_timestamp_if_empty(mut self) -> Self {
@@ -367,7 +385,12 @@ impl RpcCommand {
 
     pub fn set_num_req(mut self, num_req: usize) -> Self {
         if self.num_req.is_none() {
-            self.num_req = Some(num_req)
+            if self.choose {
+                //Choose mode grabs 1 req
+                self.num_req = Some(1)
+            } else {
+                self.num_req = Some(num_req)
+            }
         }
         self
     }
@@ -387,7 +410,7 @@ impl RpcCommand {
                 log_rates.push(rate);
             }
 
-            return Some(log_rates)
+            return Some(log_rates);
         }
         // If not set return None
         if let Some(rate) = &self.rate {
