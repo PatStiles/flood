@@ -102,7 +102,8 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
     let mut conf = conf.set_rates(rates.clone());
 
     let (sessions, node_info) = connect(&conf.rpc_url).await?;
-    //TODO: FOR MULTIPLE SESSIONS CAN'T CTRL-C
+
+    let interrupt = Arc::new(InterruptHandler::install());
     for (session, node_info) in sessions.iter().zip(node_info.iter()) {
         if let Some(node_info) = node_info {
             conf.cluster_name = Some(node_info.chain_id.to_string());
@@ -116,7 +117,6 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
             .collect::<Vec<_>>();
 
         let runner = Workload::new(session.clone()?, requests, &conf);
-        let interrupt = Arc::new(InterruptHandler::install());
         if conf.warmup_duration.is_not_zero() {
             eprintln!("info: Warming up...");
             let warmup_options = ExecutionOptions {
