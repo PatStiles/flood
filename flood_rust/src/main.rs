@@ -97,7 +97,6 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
     let compare = conf.baseline.as_ref().map(|p| load_report_or_abort(p));
     let reqs = conf.parse_params().unwrap();
     let conf = conf.set_num_req(reqs.len());
-    println!("{:?}", reqs);
     let rates = conf.parse_rate();
     let mut conf = conf.set_rates(rates.clone());
 
@@ -282,7 +281,7 @@ async fn export_hdr_log(conf: HdrCommand) -> Result<()> {
 
 async fn async_main(command: Command) -> Result<()> {
     match command {
-        Command::Rpc(config) => rpc(config).await?,
+        Command::Run(config) => rpc(config).await?,
         Command::Show(config) => show(config).await?,
         Command::Hdr(config) => export_hdr_log(config).await?,
         Command::Plot(config) => plot_graph(config).await?,
@@ -305,7 +304,7 @@ fn main() {
     tracing_subscriber::fmt::init();
     let command = AppConfig::parse().command;
     let thread_count = match &command {
-        Command::Rpc(cmd) => cmd.threads.get(),
+        Command::Run(cmd) => cmd.threads.get(),
         _ => 1,
     };
     let runtime = init_runtime(thread_count);

@@ -495,7 +495,7 @@ pub enum Command {
     ///
     /// Prints nicely formatted statistics to the standard output.
     /// Additionally dumps all data into a JSON report file.
-    Rpc(RpcCommand),
+    Run(RpcCommand),
 }
 
 #[derive(Parser, Debug)]
