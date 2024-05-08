@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, process::exit};
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -323,7 +323,7 @@ impl RpcCommand {
                 let params = params.iter().fold(Vec::new(), |mut acc, param| {
                     for (j, token) in param.iter().enumerate() {
                         if token.contains("..") {
-                            if has_range { eprintln!("Invalid Number of Ranges Specified Removing extra Ranged Param: Only one range can be specified per parameters list"); break };
+                            if has_range { eprintln!("Error: Invalid Number of Ranges Specified Removing extra Ranged Param -> Only one range can be specified per parameters list"); exit(1); };
                             has_range = true;
                             let range = parse_range(token).unwrap();
                             for val in range {
@@ -464,6 +464,10 @@ pub struct PlotCommand {
     /// Plot throughput.
     #[clap(short, long("throughput"))]
     pub throughput: bool,
+
+    /// Plot success_rate.
+    #[clap(short, long("success_rate"))]
+    pub success_rate: bool,
 
     /// Write output to the given file.
     #[clap(short('o'), long, value_name = "PATH")]
