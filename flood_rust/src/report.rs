@@ -466,7 +466,7 @@ impl<'a> Display for RpcConfigCmp<'a> {
             self.line("Concurrency", "reqs", |conf| {
                 Quantity::from(conf.concurrency)
             }),
-            self.line("Call / Cycle", "reqs", |conf| {
+            self.line("Reqs / Workload", "reqs", |conf| {
                 Quantity::from(conf.num_req)
             }),
             self.line("Max Rate(s)", "req/s", |conf| 
@@ -489,7 +489,7 @@ impl<'a> Display for RpcConfigCmp<'a> {
             self.line("Sampling", "s", |conf| {
                 Quantity::from(conf.sampling_interval.seconds()).with_precision(1)
             }),
-            self.line("└─", "ops", |conf| {
+            self.line("└─", "", |conf| {
                 Quantity::from(conf.sampling_interval.count())
             }),
         ];
@@ -504,7 +504,7 @@ impl<'a> Display for RpcConfigCmp<'a> {
 pub fn print_log_header() {
     println!("{}", fmt_section_header("LOG"));
     println!("{}", style("    Time  ───── Throughput ─────  ────────────────────────────────── Response times [ms] ───────────────────────────────────").yellow().bold().for_stdout());
-    println!("{}", style("     [s]      [op/s]     [call/s]         Min        25        50        75        90        95        99      99.9       Max").yellow().for_stdout());
+    println!("{}", style("     [s]      [op/s]     [req/s]         Min        25        50        75        90        95        99      99.9       Max").yellow().for_stdout());
 }
 
 impl Display for Sample {
@@ -573,8 +573,8 @@ impl<'a> Display for BenchmarkCmp<'a> {
             self.line("└─", "%", |s| {
                 Quantity::from(s.errors_ratio).with_precision(1)
             }),
-            self.line("Total Calls", "reqs", |s| Quantity::from(s.request_count)),
-            self.line("└─", "call/op", |s| {
+            self.line("Total Requests", "reqs", |s| Quantity::from(s.request_count)),
+            self.line("└─", "req/op", |s| {
                 Quantity::from(s.requests_per_cycle).with_precision(1)
             }),
             self.line("Samples", "", |s| Quantity::from(s.log.len())),
@@ -594,7 +594,7 @@ impl<'a> Display for BenchmarkCmp<'a> {
                 .with_significance(self.cmp_req_throughput())
                 .with_orientation(1)
                 .into_box(),
-            self.line("Mean cycle time", "ms", |s| {
+            self.line("Mean workload time", "ms", |s| {
                 Quantity::from(&s.cycle_time_ms).with_precision(3)
             })
             .with_significance(self.cmp_mean_resp_time())
