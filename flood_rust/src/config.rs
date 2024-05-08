@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::num::NonZeroUsize;
@@ -117,7 +116,6 @@ pub struct RpcCommand {
     /// => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
     ///
     /// flood rpc eth_getBlockByNumber 0x123 false
-    //TODO: this accepts any number of params and parses shouldn't???
     #[arg(
         required_unless_present = "input",
         value_parser(parse_params),
@@ -138,7 +136,6 @@ pub struct RpcCommand {
     // RUN COMMANDS
     /// Number of cycles per second to execute.
     /// If not given, the benchmark cycles will be executed as fast as possible.
-    // TODO: add reserved word for logarithmic ramp up
     #[clap(short('r'), long, value_name = "COUNT", num_args(0..))]
     pub rate: Option<Vec<f64>>,
 
@@ -207,13 +204,12 @@ pub struct RpcCommand {
     #[clap(long)]
     pub choose: bool,
 
-    //TODO: add default value
     /// Eth Node RPC-URL
-    #[clap(short('u'), long, num_args(0..))]
-    pub rpc_url: Option<Vec<String>>,
+    #[clap(short('u'), default_value = "localhost", long, num_args(0..))]
+    pub rpc_url: Vec<String>,
 
     #[clap(short('e'), long)]
-    pub exp_ramp: Option<u64>,
+    pub exp_ramp: bool,
 
     /// Seconds since 1970-01-01T00:00:00Z
     #[clap(hide = true, long)]
@@ -236,13 +232,6 @@ struct JsonRequest {
     params: serde_json::Value,
 }
 
-/*
-TODO:
-- north star = be able to collect a single production quality dataset
-- main remaining goal = be able to make multiple calls using different parameter values for the same method
-    - Parse range of parameters for call to create workload
-    - Parse multiple calls and params from a file to create a workload
-*/
 impl RpcCommand {
     fn parse_rpc_params(params: &Vec<String>, raw: &bool) -> Result<Value, anyhow::Error> {
         let params = if *raw {
@@ -253,22 +242,21 @@ impl RpcCommand {
                     .transpose()?
                     .ok_or_else(|| anyhow!("Empty JSON parameters"))?
             } else {
-                Self::value_or_string(params.iter().join(" "))
+                Self::value_or_string(&params.iter().join(" "))
             }
         } else {
-            //TODO: remove this clone
             serde_json::Value::Array(
                 params
                     .iter()
-                    .map(|value: &String| Self::value_or_string(value.clone()))
+                    .map(|value: &String| Self::value_or_string(&value))
                     .collect(),
             )
         };
         Ok(params)
     }
 
-    fn value_or_string(value: String) -> Value {
-        serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value))
+    fn value_or_string(value: &String) -> Value {
+        serde_json::from_str(value).unwrap_or(serde_json::Value::String(value.to_string()))
     }
 
     fn parse_file(path: &PathBuf) -> Vec<(String, Value)> {
@@ -309,7 +297,6 @@ impl RpcCommand {
         };
 
         // Extract method and params from each request
-        // TODO: verify this works for Value and String types...
         let parsed_requests: Vec<(String, serde_json::Value)> = json_requests
             .iter()
             .map(|req| (req.method.clone(), req.params.clone()))
@@ -330,15 +317,13 @@ impl RpcCommand {
         let requests = match input {
             Some(path) => Self::parse_file(path),
             None => {
-                //TODO: remove unwrap -> Claps interface requires this for optional args
-                //TODO: abstract this into a generate args function -> maybne leverage arbitrary
                 let params = params.as_ref().unwrap();
                 let method = method.as_ref().unwrap();
+                let mut has_range = false;
                 let params = params.iter().fold(Vec::new(), |mut acc, param| {
-                    let mut has_range = false;
                     for (j, token) in param.iter().enumerate() {
-                        //TODO: generalize so it so it records range values and param indexes then generates data from that new set.
                         if token.contains("..") {
+                            if has_range { eprintln!("Invalid Number of Ranges Specified Removing extra Ranged Param: Only one range can be specified per parameters list"); break };
                             has_range = true;
                             let range = parse_range(token).unwrap();
                             for val in range {
@@ -346,8 +331,6 @@ impl RpcCommand {
                                 new_param[j] = val.clone();
                                 acc.push(new_param);
                             }
-                            //For now we only allow one range per parameters
-                            break;
                         }
                     }
                     if has_range {
@@ -392,22 +375,24 @@ impl RpcCommand {
         self
     }
 
+    fn exp_ramp(num_req: usize) -> Vec<f64> {
+        let num_values = 10;
+        let mut log_rates = Vec::with_capacity(num_values);
+        let start_rate = (10 / num_req) as f64;
+        let mut rate = start_rate;
+        while log_rates.len() < log_rates.capacity() {
+            log_rates.push(rate);
+            rate *= 10.0;
+        }
+        println!("{:?}", log_rates);
+        log_rates
+    }
+
     /// Parses rate for run
     pub fn parse_rate(&self) -> Option<Vec<f64>> {
         let num_req = self.num_req.unwrap();
-        if let Some(max_rate) = self.exp_ramp {
-            let num_values = 10;
-            let mut log_rates = Vec::with_capacity(num_values);
-            let start_rate = (10 / num_req) as f64;
-            let max_rate = (max_rate / num_req as u64) as f64;
-            for i in 0..num_values {
-                let ratio = i as f64 / (num_values - 1) as f64;
-                let rate = start_rate
-                    * std::f64::consts::E.powf((max_rate.log10() - start_rate.log10()) * ratio);
-                log_rates.push(rate);
-            }
-
-            return Some(log_rates);
+        if self.exp_ramp {
+            return Some(Self::exp_ramp(num_req));
         }
         // If not set return None
         if let Some(rate) = &self.rate {
@@ -519,48 +504,4 @@ version = clap::crate_version ! (),
 pub struct AppConfig {
     #[clap(subcommand)]
     pub command: Command,
-}
-
-#[derive(Debug, Deserialize, Default)]
-pub struct SchemaConfig {
-    #[serde(default)]
-    pub script: Vec<String>,
-    #[serde(default)]
-    pub cql: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LoadConfig {
-    pub count: u64,
-    #[serde(default)]
-    pub script: Vec<String>,
-    #[serde(default)]
-    pub cql: String,
-}
-
-mod defaults {
-    pub fn ratio() -> f64 {
-        1.0
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RunConfig {
-    #[serde(default = "defaults::ratio")]
-    pub ratio: f64,
-    #[serde(default)]
-    pub script: Vec<String>,
-    #[serde(default)]
-    pub cql: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct WorkloadConfig {
-    #[serde(default)]
-    pub schema: SchemaConfig,
-    #[serde(default)]
-    pub load: HashMap<String, LoadConfig>,
-    pub run: HashMap<String, RunConfig>,
-    #[serde(default)]
-    pub bindings: HashMap<String, String>,
 }

@@ -61,14 +61,14 @@ fn load_report_or_abort(path: &Path) -> Report {
 }
 
 /// Connects to the eth node and returns the session
-async fn connect(urls: &Option<Vec<String>>) -> Result<(Vec<Context>, Vec<Option<NodeInfo>>)> {
-    let urls = if urls.is_none() {
+async fn connect(urls: &Vec<String>) -> Result<(Vec<Context>, Vec<Option<NodeInfo>>)> {
+    let urls = if *urls == vec!["localhost".to_string()] {
         match std::env::var("HTTP_PROVIDER_URL").map_err(FloodError::EnvVar) {
             Ok(url) => vec![url],
             Err(_) => vec!["http://127.0.0.1:8545".to_string()],
         }
     } else {
-        urls.clone().unwrap()
+        urls.clone()
     };
     // First have it connect to env var then to localhost
 
@@ -97,10 +97,12 @@ async fn rpc(conf: RpcCommand) -> Result<()> {
     let compare = conf.baseline.as_ref().map(|p| load_report_or_abort(p));
     let reqs = conf.parse_params().unwrap();
     let conf = conf.set_num_req(reqs.len());
+    println!("{:?}", reqs);
     let rates = conf.parse_rate();
     let mut conf = conf.set_rates(rates.clone());
 
     let (sessions, node_info) = connect(&conf.rpc_url).await?;
+    //TODO: FOR MULTIPLE SESSIONS CAN'T CTRL-C
     for (session, node_info) in sessions.iter().zip(node_info.iter()) {
         if let Some(node_info) = node_info {
             conf.cluster_name = Some(node_info.chain_id.to_string());
@@ -252,7 +254,7 @@ async fn export_hdr_log(conf: HdrCommand) -> Result<()> {
 
     let mut serializer = V2DeflateSerializer::new();
     let mut log_writer = interval_log::IntervalLogWriterBuilder::new()
-        .add_comment(format!("[Logged with Latte {VERSION}]").as_str())
+        .add_comment(format!("[Logged with Flood {VERSION}]").as_str())
         .with_start_time(report.result.start_time.into())
         .with_base_time(report.result.start_time.into())
         .with_max_value_divisor(1000000.0) // ms

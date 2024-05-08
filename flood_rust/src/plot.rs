@@ -130,6 +130,8 @@ pub async fn plot_graph(conf: PlotCommand) -> Result<()> {
     let primary_y_spec: YSpec = match scales.as_slice() {
         [ResponseTime] => YSpec::Log((min_value..max_value).log_scale().into()),
         [Throughput] => YSpec::Linear((0f32..max_value).into()),
+        [SuccessRate] => YSpec::Linear((0f32..max_value).into()),
+        [FailureRate] => YSpec::Linear((0f32..max_value).into()),
         [] => {
             eprintln!("error: No data series selected. Add --throughput or --percentile options.");
             exit(1);
@@ -144,7 +146,7 @@ pub async fn plot_graph(conf: PlotCommand) -> Result<()> {
 
     let output_path = conf
         .output
-        .unwrap_or(reports[0].conf.default_output_file_name("png"));
+        .unwrap_or(reports[0].conf.default_output_file_name("svg"));
     let root = SVGBackend::new(&output_path, (2000, 1000)).into_drawing_area();
     root.fill(&WHITE).unwrap();
 

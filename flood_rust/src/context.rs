@@ -94,7 +94,6 @@ impl Default for SessionStats {
 /// It also tracks query execution metrics such as number of requests, rows, response times etc.
 #[derive(Any)]
 pub struct Context {
-    //TODO: this may not be the best... but for now it works
     pub session: Arc<RpcClient<Http<reqwest::Client>>>,
     statements: HashMap<String, Arc<Request<Box<RawValue>>>>,
     pub stats: TryLock<SessionStats>,

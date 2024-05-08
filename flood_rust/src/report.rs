@@ -435,7 +435,6 @@ impl RpcConfigCmp<'_> {
             .unwrap_or_default()
     }
 
-    // TODO: Returns the set union of custom user parameters in both configurations.
 }
 
 impl<'a> Display for RpcConfigCmp<'a> {
@@ -463,21 +462,18 @@ impl<'a> Display for RpcConfigCmp<'a> {
 
         let lines: Vec<Box<dyn Display>> = vec![
             self.line("Threads", "", |conf| Quantity::from(conf.threads)),
-            //TODO: add connection
-            self.line("Concurrency", "calls", |conf| {
+            self.line("Connection(s)", "", |conf| format!("{value:9}", value = conf.rpc_url.iter().join(", "))),
+            self.line("Concurrency", "reqs", |conf| {
                 Quantity::from(conf.concurrency)
             }),
-            self.line("Call / Cycle", "calls", |conf| {
+            self.line("Call / Cycle", "reqs", |conf| {
                 Quantity::from(conf.num_req)
             }),
-            self.line("Max Rate(s)", "call/s", |conf| 
+            self.line("Max Rate(s)", "req/s", |conf| 
                 match &conf.rate {
-                    Some(rates) => rates.into_iter().map(|r| { let q = Quantity::from(r); format!("{q}") }).collect::<Vec<String>>().join(", "),
-                    None => match conf.exp_ramp {
-                        Some(max_rate) => { let q = Quantity::from(max_rate); format!("{q}") },
-                        None => format!("MAX")
-                    }
-            }),
+                    Some(rates) => format!("{value:9}", value = rates.into_iter().map(|r| { format!("{}", style(r).bright().for_stdout()) }).collect::<Vec<String>>().join(", ")),
+                    None => format!("{value:9}", value = style("MAX RATE").bright().for_stdout()),
+                }),
             self.line("Warmup", "s", |conf| {
                 Quantity::from(conf.warmup_duration.seconds())
             }),
@@ -551,7 +547,6 @@ impl BenchmarkCmp<'_> {
 }
 
 /// Formats all benchmark stats
-// TODO: change to have clearer definitions regarding requests
 impl<'a> Display for BenchmarkCmp<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", fmt_section_header("SUMMARY STATS"))?;
@@ -570,13 +565,15 @@ impl<'a> Display for BenchmarkCmp<'a> {
                 Quantity::from(s.cpu_util).with_precision(1)
             }),
             self.line("Workloads", "ops", |s| Quantity::from(s.cycle_count)),
-            self.line("Failed Calls", "calls", |s| Quantity::from(s.error_count)),
+            self.line("Successful Reqs", "reqs", |s| Quantity::from(s.request_count - s.error_count)),
             self.line("└─", "%", |s| {
                 Quantity::from(s.errors_ratio).with_precision(1)
             }),
-            //TODO: add successful requests cound
-            //TODO: add failed requests cound
-            self.line("Total Calls", "calls", |s| Quantity::from(s.request_count)),
+            self.line("Failed Reqs", "reqs", |s| Quantity::from(s.error_count)),
+            self.line("└─", "%", |s| {
+                Quantity::from(s.errors_ratio).with_precision(1)
+            }),
+            self.line("Total Calls", "reqs", |s| Quantity::from(s.request_count)),
             self.line("└─", "call/op", |s| {
                 Quantity::from(s.requests_per_cycle).with_precision(1)
             }),
@@ -584,16 +581,16 @@ impl<'a> Display for BenchmarkCmp<'a> {
             self.line("Mean sample size", "op", |s| {
                 Quantity::from(s.log.iter().map(|s| s.cycle_count as f64).mean())
             }),
-            self.line("└─", "call", |s| {
+            self.line("└─", "req", |s| {
                 Quantity::from(s.log.iter().map(|s| s.request_count as f64).mean())
             }),
-            self.line("Concurrency", "call", |s| Quantity::from(s.concurrency)),
+            self.line("Concurrency", "req", |s| Quantity::from(s.concurrency)),
             self.line("└─", "%", |s| Quantity::from(s.concurrency_ratio)),
             self.line("Throughput", "op/s", |s| Quantity::from(s.cycle_throughput))
                 .with_significance(self.cmp_cycle_throughput())
                 .with_orientation(1)
                 .into_box(),
-            self.line("├─", "call/s", |s| Quantity::from(s.req_throughput))
+            self.line("├─", "req/s", |s| Quantity::from(s.req_throughput))
                 .with_significance(self.cmp_req_throughput())
                 .with_orientation(1)
                 .into_box(),
