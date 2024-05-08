@@ -376,7 +376,7 @@ impl RpcCommand {
     }
 
     fn exp_ramp(num_req: usize) -> Vec<f64> {
-        let num_values = 10;
+        let num_values = 6;
         let mut log_rates = Vec::with_capacity(num_values);
         let start_rate = (10 / num_req) as f64;
         let mut rate = start_rate;
@@ -384,7 +384,6 @@ impl RpcCommand {
             log_rates.push(rate);
             rate *= 10.0;
         }
-        println!("{:?}", log_rates);
         log_rates
     }
 
