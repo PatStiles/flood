@@ -128,7 +128,7 @@ pub struct RpcCommand {
     /// The first param will be interpreted as a raw JSON array of params.
     /// If no params are given, stdin will be used. For example:
     ///
-    /// flood rpc eth_getBlockByNumber '["0x123", false]' --raw
+    /// flood run eth_getBlockByNumber '["0x123", false]' --raw
     ///     => {"method": "eth_getBlockByNumber", "params": ["0x123", false] ... }
     #[clap(long, short = 'j')]
     raw: bool,
@@ -215,8 +215,7 @@ pub struct RpcCommand {
     #[clap(hide = true, long)]
     pub timestamp: Option<i64>,
 
-    /// Number of requests per workload set during parse_params
-    #[clap(hide = true, long)]
+    #[clap(skip)]
     pub num_req: Option<usize>,
 
     #[clap(skip)]
