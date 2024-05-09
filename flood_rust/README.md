@@ -46,8 +46,6 @@ If one requests is specified then one requests is executed per benchmark cycle. 
 
 
 
-## Flags
-
 ## Examples:
 
 [JSON-RPC Reference](https://ethereum.org/en/developers/docs/apis/json-rpc)
